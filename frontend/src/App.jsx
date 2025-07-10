@@ -1,14 +1,11 @@
 import React from 'react';
-import AppBar from '@mui/material/AppBar';
-import Box from '@mui/material/Box';
-import Toolbar from '@mui/material/Toolbar';
-import Typography from '@mui/material/Typography';
-import Container from '@mui/material/Container';
-import CssBaseline from '@mui/material/CssBaseline';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Sidebar from './components/Sidebar';
 import UrlInput from './components/UrlInput';
 import CanvasBoard from './components/CanvasBoard';
+import SimilarProductsPage from './pages/SimilarProductsPage';
+import FindSimilarProductsV2 from './pages/FindSimilarProductsV2';
 import { saveToSession, loadFromSession } from './utils/sessionStorage';
-
 import './App.css';
 
 function App() {
@@ -25,7 +22,7 @@ function App() {
   const fetchProductData = async (url) => {
     setLoading(true);
     try {
-      const resp = await fetch('http://localhost:8001/api/product', {
+      const resp = await fetch('/api/product', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
@@ -66,29 +63,53 @@ function App() {
 
 
   return (
-    <>
-      <CssBaseline />
-      <AppBar position="static">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Velora2 MVP
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Container maxWidth="md" sx={{ mt: 4 }}>
-        {/* Main content area */}
-        <Box sx={{ p: 2, minHeight: '60vh' }}>
-          <Typography variant="h4" gutterBottom>
-            Velora2 Canvas
-          </Typography>
-          <Typography variant="body1" sx={{ mb: 4 }}>
-            Paste a product URL below. Your wishlist will appear in a Pinterest-style board. Data is saved in session storage.
-          </Typography>
-          <UrlInput onAddUrl={handleAddUrl} />
-          <CanvasBoard products={products} onRemoveProduct={handleRemoveProduct} loading={loading} />
-        </Box>
-      </Container>
-    </>
+    <Router>
+      <div className="flex min-h-screen bg-black">
+        <Sidebar />
+        <div className="flex-1">
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <main className="ml-56 p-4 lg:p-8 flex-1">
+                  <div className="rounded-lg bg-white shadow-lg p-8">
+                    <div className="text-center p-8 lg:p-12">
+                      <div className="max-w-2xl mx-auto">
+                        <h1 className="text-4xl lg:text-5xl font-extrabold text-black tracking-tight">Velora2 Canvas</h1>
+                        <p className="py-6 text-gray-600">Paste a product URL below. Your wishlist will appear in a clean, organized board.</p>
+                        <div className="w-full max-w-lg mx-auto">
+                          <UrlInput onAddUrl={handleAddUrl} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8">
+                    <CanvasBoard products={products} onRemoveProduct={handleRemoveProduct} loading={loading} />
+                  </div>
+                </main>
+              }
+            />
+            <Route
+              path="/similar-products"
+              element={
+                <main className="ml-56 p-4 lg:p-8 flex-1">
+                  <SimilarProductsPage wishlistProducts={products} />
+                </main>
+              }
+            />
+            <Route
+              path="/find-similar-products-v2"
+              element={
+                <main className="ml-56 p-4 lg:p-8 flex-1">
+                  <FindSimilarProductsV2 wishlistProducts={products} />
+                </main>
+              }
+            />
+          </Routes>
+        </div>
+      </div>
+    </Router>
   );
 }
 

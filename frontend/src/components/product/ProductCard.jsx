@@ -1,9 +1,4 @@
-import React from 'react';
-import Card from '@mui/material/Card';
-import CardContent from '@mui/material/CardContent';
-import Typography from '@mui/material/Typography';
-import Box from '@mui/material/Box';
-import Link from '@mui/material/Link';
+import React, { useState } from 'react';
 
 // Helper to format price with currency
 const formatPrice = (price, currency) => {
@@ -19,70 +14,27 @@ const formatPrice = (price, currency) => {
 
 const ProductCard = ({ product }) => {
   const { title, price, currency, image_url, site_name, url } = product;
+  // Remove compare/cheaperOffers for grid version
 
   return (
-    <Card 
-      sx={{
-        borderRadius: 4, 
-        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-        transition: 'transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out',
-        '&:hover': {
-          transform: 'translateY(-4px)',
-          boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
-        },
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <Box sx={{ pt: '100%', position: 'relative', overflow: 'hidden' }}>
-        <Box
-          component="img"
-          src={image_url || 'https://via.placeholder.com/400'}
+    <div className="w-full max-w-xs bg-white shadow-md rounded-lg border border-gray-200 flex flex-col p-3 mx-auto">
+      <div className="aspect-square bg-gray-100 rounded-md overflow-hidden mb-2 flex items-center justify-center">
+        <img
+          src={image_url && image_url.startsWith('http') ? image_url : 'https://via.placeholder.com/400'}
           alt={title || 'Product Image'}
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover', // Ensures the image covers the box, cropping as needed
-          }}
+          className="object-cover w-full h-full min-h-[120px]"
+          loading="lazy"
+          onError={e => { e.target.src = 'https://via.placeholder.com/400'; }}
         />
-      </Box>
-      <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 2 }}>
-        <Typography 
-          variant="caption" 
-          color="text.secondary" 
-          sx={{ textTransform: 'uppercase', letterSpacing: '0.5px', mb: 1 }}
-        >
-          {site_name || 'Retailer'}
-        </Typography>
-        <Link href={url} target="_blank" rel="noopener" underline="none" color="inherit">
-          <Typography 
-            variant="subtitle1" 
-            component="h2" 
-            sx={{
-              fontWeight: 600,
-              mb: 1,
-              flexGrow: 1,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              minHeight: '2.5em', // Reserve space for two lines
-            }}
-          >
-            {title || 'Untitled Product'}
-          </Typography>
-        </Link>
-        <Box sx={{ mt: 'auto', pt: 1 }}>
-          <Typography variant="h6" component="p" sx={{ fontWeight: 700 }}>
-            {formatPrice(price, currency)}
-          </Typography>
-        </Box>
-      </CardContent>
-    </Card>
+      </div>
+      <div className="flex flex-col flex-1 gap-1">
+        <span className="text-xs text-gray-500 uppercase font-semibold tracking-wide mb-1">{site_name || 'Retailer'}</span>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+          <h2 className="font-bold text-base line-clamp-2 min-h-[2.5em]">{title || 'Untitled Product'}</h2>
+        </a>
+        <span className="text-lg font-extrabold text-black mt-1">{formatPrice(price, currency)}</span>
+      </div>
+    </div>
   );
 };
 

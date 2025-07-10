@@ -13,20 +13,22 @@ def run_product_cleaner(firecrawl_data):
     )
     task = Task(
         description=(
-            'You are a data extraction expert. Your mission is to analyze the Firecrawl metadata JSON provided and extract key product information with extreme accuracy. ' 
-            'You MUST NOT invent, guess, or hallucinate any data. Every piece of information in your output must be sourced directly from the input metadata.'
+            'You are a data extraction expert. Your mission is to analyze the Firecrawl metadata JSON provided and extract key product information with extreme accuracy. '
+            'You MUST NOT invent, guess, or hallucinate any data. Every piece of information in your output must be sourced directly from the input metadata. '
+            'For each field, if the main key is missing, try all plausible alternatives (e.g., for title: "og:title", "title", "product_title"). '
+            'Return the best available value for each field. If you find partial data, return it. Only return null if you are certain no value is present in any field.'
         ),
         expected_output=(
             'A single, clean JSON object containing the extracted product data. Follow these rules strictly:\n'
             '1. **Source from Metadata ONLY**: Every value in the output JSON MUST be extracted from the `metadata` input. Do not use the `markdown` field.\n'
-            '2. **Never Invent Data**: If a value is not present in the metadata, use `null` for that field. Do not make up values like "Sample Product" or prices.\n'
-            '3. **Field Mapping**: Use the following logic to find the best value for each field:\n'
-            '   - `title`: Use `og:title` first, then `title`.\n'
-            '   - `price`: Use `og:price:amount`. Extract only the number.\n'
-            '   - `image_url`: Use `og:image` first, then `ogImage`.\n'
-            '   - `site_name`: Use `og:site_name` first, then `ogSiteName`.\n'
-            '   - `description`: Use `og:description` first, then `description`.\n'
-            '   - `url`: Use `og:url` first, then `url`.\n'
+            '2. **Never Invent Data**: If a value is not present in the metadata or any plausible alternative field, use `null` for that field. Do not make up values like "Sample Product" or prices.\n'
+            '3. **Field Mapping & Fallbacks**: For each output field, try all common field names in order. For example:\n'
+            '   - `title`: Try `og:title`, then `title`, then `product_title`.\n'
+            '   - `price`: Try `og:price:amount`, then `price`, then `product:price:amount`. Extract only the number.\n'
+            '   - `image_url`: Try `og:image`, then `ogImage`, then `image`, then `image_url`.\n'
+            '   - `site_name`: Try `og:site_name`, then `ogSiteName`, then `site_name`.\n'
+            '   - `description`: Try `og:description`, then `description`, then `product:description`.\n'
+            '   - `url`: Try `og:url`, then `url`, then `ogUrl`.\n'
             '   - `category`, `original_price`, `last_checked`: Set to `null` as they are not in the metadata.\n'
             '4. **Example**:\n'
             '   - **Input Metadata**: `{"og:title": "Cool T-Shirt", "og:price:amount": "19.99", "og:image": "http://example.com/img.png"...}`\n'
