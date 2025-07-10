@@ -454,7 +454,6 @@ const FindSimilarProductsV2 = ({ wishlistProducts = [] }) => {
     setError("");
     setSimilarProducts([]);
     try {
-      if (!EXA_API_KEY) throw new Error("Missing Exa API key.");
       if (!selectedProduct.url) throw new Error("Selected product must have a URL");
       
       // Step 1: Find similar products using Exa's search API
@@ -484,109 +483,57 @@ const FindSimilarProductsV2 = ({ wishlistProducts = [] }) => {
         return;
       }
       
-      // Step 2: Get detailed content for each URL using Exa's contents API
-      const contentsResp = await fetch("https://api.exa.ai/contents", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${EXA_API_KEY}`,
-        },
-        body: JSON.stringify({
-          urls: similarUrls,
-          text: true,
-          livecrawl: "preferred",
-          summary: {
-            query: "Extract product information including price, original price if discounted, and key features"
-          },
-          extras: {
-            imageLinks: 3
+      // New: Direct backend product extraction pipeline (Firecrawl-powered)
+      const processedProducts = await Promise.all(similarUrls.map(async (url, index) => {
+        try {
+          const resp = await fetch('http://localhost:8002/api/extract-price-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: '', url })
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data.success && data.extraction_result && Object.keys(data.extraction_result).length > 0) {
+              return { ...data.extraction_result, url };
+            }
           }
-        }),
-      });
-      
-      if (!contentsResp.ok) throw new Error(`Failed to fetch content from Exa API: ${contentsResp.status} ${contentsResp.statusText}`);
-      const contentsData = await contentsResp.json();
-      
-      // Log the raw API response for debugging
-      console.log('Raw Exa /contents API response:', contentsData);
-      
-      // Process and transform the data
-      const processedProducts = contentsData.results.map((item, index) => {
-        console.log(`\n--- Processing Product ${index + 1} ---`);
-        console.log(`URL: ${item.url}`);
-        console.log(`Title: ${item.title}`);
-        
-        // Log a sample of the text content for debugging
-        if (item.text) {
-          const textSample = item.text.substring(0, 300);
-          console.log(`Text sample: ${textSample}...`);
-        } else {
-          console.log('No text content available');
+        } catch (err) {
+          console.error('Backend extraction error:', err);
         }
+        
+        // Fallback: extract basic info from URL if extraction failed
+        console.log(`⚠️ Using URL fallback for product ${index + 1}: ${url}`);
+        
         // Extract domain name for display
         let siteName = "";
         try {
-          const url = new URL(item.url);
-          siteName = url.hostname.replace(/^www\./, "").split(".")[0].toUpperCase();
+          const urlObj = new URL(url);
+          siteName = urlObj.hostname.replace(/^www\./, "").split(".")[0].toUpperCase();
         } catch (e) {
           siteName = "RETAILER";
         }
         
-        // Extract price from text
-        console.log(`Processing item: ${item.url}`);
-        console.log('Raw text content:', item.text?.substring(0, 500) + '...');
-        
-
-        
-        // Extract price using improved logic
-        const price = extractPrice(item.text);
-        console.log('Extracted price:', price);
-        
-        // If we found a price, try to find original price
-        const originalPrice = price ? extractOriginalPrice(item.text, price) : null;
-        console.log('Extracted original price:', originalPrice);
-        
-        // Calculate discount percentage if both prices are available
-        const discountPercentage = calculateDiscountPercentage(originalPrice, price);
-        
-        // Format prices with $ if they exist
-        const formattedPrice = price ? `$${price}` : null;
-        const formattedOriginalPrice = originalPrice ? `$${originalPrice}` : null;
-        
-        console.log('Formatted price:', formattedPrice);
-        console.log('Formatted original price:', formattedOriginalPrice);
-        
-        // Get the first image URL if available
-        const imageUrl = item.extras?.imageLinks?.[0] || null;
-        
-        // Extract title from content or use URL as fallback
-        const title = item.title || item.url.split("/").pop() || "Product";
-        
-        // Extract a short description
-        let description = "";
-        if (item.summary) {
-          description = item.summary;
-        } else if (item.text) {
-          // Take first 200 characters as description
-          description = item.text.substring(0, 200) + (item.text.length > 200 ? "..." : "");
-        }
-        
+        // Extract title from URL
+        const urlPath = url.split('/').pop().replace(/\.html$|\.php$|\.aspx$/i, '');
+        const title = urlPath
+          .split('-')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+          
         return {
-          url: item.url,
-          title: title,
-          description: description,
-          image_url: imageUrl,
-          price: formattedPrice,
-          original_price: formattedOriginalPrice,
-          discount_percentage: discountPercentage,
+          url,
+          title: title || 'Product',
+          description: `View this product on ${siteName}`,
+          image_url: null,
+          price: 'Price unavailable',
           site_name: siteName
         };
-      });
-      
+      }));
       setSimilarProducts(processedProducts);
+      setLoading(false);
+      return;
     } catch (err) {
       setError(`Error: ${err.message}`);
-    } finally {
       setLoading(false);
     }
   };

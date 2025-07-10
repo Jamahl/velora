@@ -13,8 +13,7 @@ const formatPrice = (price, currency) => {
 };
 
 const ProductCard = ({ product }) => {
-  const { title, price, currency, image_url, site_name, url } = product;
-  // Remove compare/cheaperOffers for grid version
+  const { title, price, discounted_price, discount_percentage, brand, product_description, currency, image_url, site_name, url } = product;
 
   return (
     <div className="w-full max-w-xs bg-white shadow-md rounded-lg border border-gray-200 flex flex-col p-3 mx-auto">
@@ -32,7 +31,28 @@ const ProductCard = ({ product }) => {
         <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline">
           <h2 className="font-bold text-base line-clamp-2 min-h-[2.5em]">{title || 'Untitled Product'}</h2>
         </a>
-        <span className="text-lg font-extrabold text-black mt-1">{formatPrice(price, currency)}</span>
+        {/* Price Section */}
+        <div className="flex items-center gap-2 mt-1">
+          {discounted_price ? (
+            <>
+              <span className="text-lg font-extrabold text-red-600">{formatPrice(discounted_price, currency)}</span>
+              <span className="line-through text-sm text-gray-400">{formatPrice(price, currency)}</span>
+            </>
+          ) : (
+            <span className="text-lg font-extrabold text-black">{formatPrice(price, currency)}</span>
+          )}
+          {discount_percentage && (
+            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded ml-2">Save {discount_percentage}</span>
+          )}
+        </div>
+        {/* Brand */}
+        {brand && (
+          <span className="text-xs text-gray-600 font-medium mt-1">Brand: {brand}</span>
+        )}
+        {/* Description */}
+        {product_description && (
+          <p className="text-gray-700 text-sm mt-2 line-clamp-3">{product_description}</p>
+        )}
       </div>
     </div>
   );

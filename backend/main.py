@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 # Import CrewAI tools
 from crewai_product_cleaner import run_product_cleaner
 from crewai_price_comparator import PriceComparatorCrew
-from crewai_similar_products_new import SimilarProductsCrew
+
+
+from extraction_utils import fetch_firecrawl_contents, extract_price_with_regex
 
 load_dotenv()
 
@@ -28,7 +30,7 @@ app = FastAPI()
 # --- Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5186"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5186", "http://localhost:5182"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -134,20 +136,51 @@ def parse_similar_products_result(result, fallback_url=None):
 
 @app.post("/api/similar-products")
 async def find_similar_products(product: Product):
-    logger.info(f"Received find similar products request for: {product.title}")
+    """
+    Find similar products using Exa API and extract product data for each using Firecrawl.
+    Returns: {"similar_products": [ ... ]}
+    """
+    logger.info(f"[Direct] Received find similar products request for: {product.title}")
     try:
-        crew = SimilarProductsCrew(
-            product_title=product.title,
-            product_description=product.description or "",
-            product_color=getattr(product, "color", None),
-            product_price=product.price,
-            url=product.url
-        )
-        result = await crew.run()
-        parsed = parse_similar_products_result(result, fallback_url=product.url)
-        return parsed
+        # 1. Call Exa API directly to get similar product URLs
+        EXA_API_KEY = os.getenv("EXA_API_KEY")
+        EXA_FIND_SIMILAR_URL = "https://api.exa.ai/v1/findSimilar"
+        headers = {"Authorization": f"Bearer {EXA_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "url": product.url,
+            "numResults": 10
+        }
+        async with httpx.AsyncClient() as client:
+            exa_resp = await client.post(EXA_FIND_SIMILAR_URL, json=payload, headers=headers, timeout=30)
+        if exa_resp.status_code != 200:
+            logger.error(f"Exa API error: {exa_resp.status_code} {exa_resp.text}")
+            raise HTTPException(status_code=502, detail="Exa API error")
+        exa_data = exa_resp.json()
+        # Parse URLs from Exa response
+        similar_products = []
+        for item in exa_data.get("results", []):
+            url = item.get("url")
+            title = item.get("title")
+            if url and title:
+                similar_products.append({"title": title, "url": url})
+        logger.info(f"[Direct] Found {len(similar_products)} similar product URLs from Exa.")
+        # 2. For each URL, call Firecrawl to extract product data
+        detailed_products = []
+        for idx, prod in enumerate(similar_products):
+            url = prod["url"]
+            logger.info(f"[Direct] ({idx+1}/{len(similar_products)}) Crawling with Firecrawl: {url}")
+            firecrawl_data = fetch_firecrawl_contents(url)
+            if firecrawl_data:
+                firecrawl_data["source_url"] = url
+                firecrawl_data["original_title"] = prod["title"]
+                detailed_products.append(firecrawl_data)
+                logger.info(f"[Direct] Firecrawl extraction success for {url}")
+            else:
+                logger.warning(f"[Direct] Firecrawl extraction failed for {url}")
+        logger.info(f"[Direct] Extracted detailed data for {len(detailed_products)} products using Firecrawl")
+        return {"similar_products": detailed_products}
     except Exception as e:
-        logger.exception("An unexpected error occurred during similar product search.")
+        logger.exception("[Direct] Unexpected error during similar product search.")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
 
 @app.post("/api/product")
@@ -292,3 +325,48 @@ async def compare_price(product: Product):
     except Exception as e:
         logger.exception("An unexpected error occurred during price comparison.")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
+
+class PriceExtractionRequest(BaseModel):
+    content: str
+    url: Optional[str] = ""
+
+@app.post("/api/extract-price-ai")
+async def extract_price_ai(request: PriceExtractionRequest):
+    """Extract price information using direct pipeline: Firecrawl → regex fallback. No CrewAI."""
+    logger.info(f"[Direct] Received price extraction request for URL: {request.url}")
+    try:
+        # 1. Call Firecrawl for content extraction
+        firecrawl_data = fetch_firecrawl_contents(request.url)
+        logger.info(f"[Direct] Firecrawl data: {bool(firecrawl_data)}")
+        result = {}
+        confidence = 0
+        raw_content = None
+        if firecrawl_data:
+            result = firecrawl_data.copy()
+            raw_content = firecrawl_data.get("description") or firecrawl_data.get("text") or None
+            confidence = firecrawl_data.get("overall_confidence", 0)
+        else:
+            logger.warning(f"[Direct] Firecrawl extraction failed for {request.url}")
+        # 2. Fallback: if missing price, use regex on raw_content
+        price = result.get("price") if isinstance(result, dict) else None
+        if not price and raw_content:
+            fallback_price = extract_price_with_regex(raw_content)
+            if fallback_price:
+                result["price"] = fallback_price
+                result["price_extraction_fallback"] = "regex"
+                logger.info(f"[Direct] Fallback regex price used: {fallback_price}")
+        # 3. Log final result
+        logger.info(f"[Direct] Final extraction result: {result}")
+        return {
+            "success": True,
+            "extraction_result": result,
+            "confidence": confidence
+        }
+    except Exception as e:
+        logger.exception("[Direct] Unexpected error during price extraction.")
+        return {
+            "success": False,
+            "error": str(e),
+            "extraction_result": None,
+            "confidence": 0
+        }

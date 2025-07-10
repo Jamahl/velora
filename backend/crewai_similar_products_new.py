@@ -433,53 +433,30 @@ class SimilarProductsCrew:
                 self.logger.error("No similar products found or invalid result format")
                 return {"similar_products": []}
             
-            # STEP 2: For each similar product URL, fetch its content
-            self.logger.info("STEP 2: Creating Content Extraction agent")
-            content_agent = Agent(
-                role="Product Content Extractor",
-                goal="Extract detailed product information from each URL",
-                backstory="You're an expert at extracting product details from web pages. You use Exa's contents endpoint to get text, images, and other data from product pages.",
-                tools=[self.exa_contents_tool],
-                verbose=True,
-                llm=self.llm
-            )
-            
-            # Create a task that processes each URL individually
-            content_task = Task(
-                description=(
-                    "For each product URL in the list:\n"
-                    "1. Use the ExaContentsTool to extract content from the URL\n"
-                    "2. From the extracted content, create a structured product entry with these fields:\n"
-                    "   - title: Use the title from the page\n"
-                    "   - url: Use the original URL\n"
-                    "   - retailer: Extract from the URL domain (e.g., 'thepearlsource.com' → 'The Pearl Source')\n"
-                    "   - description: Extract from page text if available, otherwise use '[No description available]'\n"
-                    "   - price: Look for price patterns in text (e.g. $XX.XX), if none found use '[Price not available]'\n"
-                    "   - image_url: Use the first image URL if available, otherwise use placeholder\n\n"
-                    "IMPORTANT INSTRUCTIONS:\n"
-                    "- Process each URL individually with the ExaContentsTool\n"
-                    "- NEVER make up data - only use what's available from the tool results\n"
-                    "- When data is missing, use clear placeholders\n"
-                    "- Return a well-formatted JSON array of product entries\n"
-                ),
-                expected_output="JSON array of products with details extracted from each URL",
-                agent=content_agent,
-                context=similar_data  # Pass the similar products as context
-            )
-            
-            # Run the content extraction agent
-            self.logger.info("Starting content extraction for similar products")
-            content_crew = Crew(
-                agents=[content_agent],
-                tasks=[content_task],
-                verbose=True
-            )
-            
-            content_result = content_crew.kickoff()
-            
-            # Extract detailed product data
-            detailed_products = self.extract_result_data(content_result)
-            self.logger.info(f"Extracted detailed data for {len(detailed_products) if isinstance(detailed_products, list) else 0} products")
+            # STEP 2: For each similar product URL, fetch its content using Firecrawl
+            from extraction_utils import fetch_firecrawl_contents
+            self.logger.info("STEP 2: Extracting product data for each similar product URL using Firecrawl")
+            # Log all URLs to be crawled by Firecrawl
+            urls_to_crawl = [prod.get("url") for prod in similar_data if prod.get("url")]
+            self.logger.info(f"[Firecrawl] About to crawl {len(urls_to_crawl)} URLs: {urls_to_crawl}")
+            detailed_products = []
+            for idx, prod in enumerate(similar_data):
+                url = prod.get("url")
+                if not url:
+                    self.logger.warning(f"Skipping product with missing URL at index {idx}: {prod}")
+                    continue
+                self.logger.info(f"[Firecrawl] ({idx+1}/{len(urls_to_crawl)}) Crawling URL: {url}")
+                firecrawl_data = fetch_firecrawl_contents(url)
+                if firecrawl_data:
+                    # Attach the original similarity score and title if needed
+                    firecrawl_data["similarity_score"] = prod.get("score")
+                    firecrawl_data["source_url"] = url
+                    firecrawl_data["original_title"] = prod.get("title")
+                    detailed_products.append(firecrawl_data)
+                    self.logger.info(f"[Firecrawl] Success for {url}")
+                else:
+                    self.logger.warning(f"[Firecrawl] Extraction failed for {url}")
+            self.logger.info(f"Extracted detailed data for {len(detailed_products)} products using Firecrawl")
             
             # STEP 3: Filter products for relevance
             self.logger.info("STEP 3: Creating Product Filter agent")
